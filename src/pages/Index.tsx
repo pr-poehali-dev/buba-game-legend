@@ -36,18 +36,11 @@ const boobas: Booba[] = [
     chance: 20
   },
   {
-    id: 'happy-booba',
-    name: 'Счастливый Буба',
+    id: 'regular-booba',
+    name: 'Обычный Буба',
     rarity: 'common',
-    image: 'https://cdn.poehali.dev/files/bbc52363-7edd-421d-b704-16291f10f9b4.jpg',
-    chance: 35
-  },
-  {
-    id: 'sleepy-booba',
-    name: 'Сонный Буба',
-    rarity: 'common',
-    image: 'https://cdn.poehali.dev/files/328f4730-f1e2-45c6-bc03-ca94d18b5ffd.jpg',
-    chance: 40
+    image: 'https://cdn.poehali.dev/files/506d5ba0-644a-4c64-a200-0715bb43c72b.jpg',
+    chance: 75
   }
 ];
 
@@ -172,6 +165,16 @@ const Index = () => {
             Буба Кейсы
           </h1>
           <p className="text-muted-foreground text-lg">Собери коллекцию редких персонажей!</p>
+          <div className="mt-4 text-sm text-muted-foreground/80">
+            <p>Сделано <span className="text-destructive font-semibold">RED BUBA</span></p>
+            <p className="flex items-center justify-center gap-2 mt-1">
+              <Icon name="Send" size={14} />
+              <a href="https://t.me/vocal_endr" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">@vocal_endr</a>
+              <span>и</span>
+              <a href="https://t.me/PinguinoPenguins" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">@PinguinoPenguins</a>
+            </p>
+            <p className="mt-1 text-xs">От сериала Буба против мессенджера MAX</p>
+          </div>
         </div>
 
         <Tabs defaultValue="cases" className="w-full">
