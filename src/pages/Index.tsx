@@ -40,7 +40,14 @@ const boobas: Booba[] = [
     name: 'Обычный Буба',
     rarity: 'common',
     image: 'https://cdn.poehali.dev/files/506d5ba0-644a-4c64-a200-0715bb43c72b.jpg',
-    chance: 75
+    chance: 50
+  },
+  {
+    id: 'sleepy-booba',
+    name: 'Спящий Буба',
+    rarity: 'common',
+    image: 'https://cdn.poehali.dev/files/559f0072-6940-41a7-b372-f0dd81de24e5.jpg',
+    chance: 25
   }
 ];
 
