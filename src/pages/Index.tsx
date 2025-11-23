@@ -128,27 +128,66 @@ const Index = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const savedCollection = localStorage.getItem('booba-collection');
-    const savedTotal = localStorage.getItem('booba-total-opened');
-    const savedBubix = localStorage.getItem('booba-bubix');
-    
-    if (savedCollection) {
-      setCollection(JSON.parse(savedCollection));
-    }
-    if (savedTotal) {
-      setTotalOpened(parseInt(savedTotal));
-    }
-    if (savedBubix) {
-      setBubix(parseInt(savedBubix));
-    }
-    
+    loadFromServer();
     loadListings();
-    syncWithServer();
   }, []);
+
+  const loadFromServer = async () => {
+    try {
+      const response = await fetch(`${MARKETPLACE_API}?action=inventory&player_id=${playerId}`);
+      const data = await response.json();
+      
+      if (data.inventory && data.inventory.length > 0) {
+        const serverCollection: Record<string, CollectionItem> = {};
+        
+        data.inventory.forEach((item: { booba_id: string; count: number }) => {
+          const boobaData = boobas.find(b => b.id === item.booba_id);
+          if (boobaData) {
+            serverCollection[item.booba_id] = {
+              ...boobaData,
+              count: item.count,
+              firstUnlocked: new Date().toISOString()
+            };
+          }
+        });
+        
+        setCollection(serverCollection);
+        setBubix(data.bubix || 200);
+        
+        localStorage.setItem('booba-collection', JSON.stringify(serverCollection));
+        localStorage.setItem('booba-bubix', (data.bubix || 200).toString());
+      } else {
+        const savedCollection = localStorage.getItem('booba-collection');
+        const savedBubix = localStorage.getItem('booba-bubix');
+        
+        if (savedCollection) {
+          const localCollection = JSON.parse(savedCollection);
+          setCollection(localCollection);
+          const localBubix = savedBubix ? parseInt(savedBubix) : 200;
+          setBubix(localBubix);
+          await syncWithServer(localCollection, localBubix);
+        }
+      }
+      
+      const savedTotal = localStorage.getItem('booba-total-opened');
+      if (savedTotal) {
+        setTotalOpened(parseInt(savedTotal));
+      }
+    } catch (error) {
+      console.error('Failed to load from server:', error);
+      const savedCollection = localStorage.getItem('booba-collection');
+      const savedTotal = localStorage.getItem('booba-total-opened');
+      const savedBubix = localStorage.getItem('booba-bubix');
+      
+      if (savedCollection) setCollection(JSON.parse(savedCollection));
+      if (savedTotal) setTotalOpened(parseInt(savedTotal));
+      if (savedBubix) setBubix(parseInt(savedBubix));
+    }
+  };
 
   const syncWithServer = async (customCollection?: Record<string, CollectionItem>, customBubix?: number) => {
     try {
-      const collectionToSync = customCollection || collection;
+      const collectionToSync = customCollection !== undefined ? customCollection : collection;
       const bubixToSync = customBubix !== undefined ? customBubix : bubix;
       
       const inventoryData: Record<string, number> = {};
