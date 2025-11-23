@@ -146,10 +146,13 @@ const Index = () => {
     syncWithServer();
   }, []);
 
-  const syncWithServer = async () => {
+  const syncWithServer = async (customCollection?: Record<string, CollectionItem>, customBubix?: number) => {
     try {
+      const collectionToSync = customCollection || collection;
+      const bubixToSync = customBubix !== undefined ? customBubix : bubix;
+      
       const inventoryData: Record<string, number> = {};
-      Object.values(collection).forEach(item => {
+      Object.values(collectionToSync).forEach(item => {
         inventoryData[item.id] = item.count;
       });
       
@@ -159,7 +162,7 @@ const Index = () => {
         body: JSON.stringify({
           action: 'sync',
           player_id: playerId,
-          bubix,
+          bubix: bubixToSync,
           inventory: inventoryData
         })
       });
@@ -212,6 +215,7 @@ const Index = () => {
         }
         setCollection(newCollection);
         saveProgress(newCollection, totalOpened, bubix);
+        await syncWithServer(newCollection, bubix);
         
         toast({
           title: '✅ Выставлено на продажу',
@@ -269,6 +273,7 @@ const Index = () => {
             setCollection(newCollection);
             setBubix(newBubix);
             saveProgress(newCollection, totalOpened, newBubix);
+            await syncWithServer(newCollection, newBubix);
           }
           
           toast({
@@ -355,6 +360,7 @@ const Index = () => {
       setTotalOpened(newTotal);
       setBubix(finalBubix);
       saveProgress(newCollection, newTotal, finalBubix);
+      syncWithServer(newCollection, finalBubix);
       
       setTimeout(() => {
         setShowResult(true);
