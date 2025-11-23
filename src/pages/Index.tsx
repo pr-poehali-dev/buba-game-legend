@@ -98,6 +98,16 @@ const rarityConfig = {
   }
 };
 
+const MARKETPLACE_API = 'https://functions.poehali.dev/eb27b962-8c84-415e-afc2-2225a4581d70';
+
+interface MarketplaceListing {
+  listing_id: number;
+  seller_id: string;
+  booba_id: string;
+  price: number;
+  created_at: string;
+}
+
 const Index = () => {
   const [isOpening, setIsOpening] = useState(false);
   const [currentBooba, setCurrentBooba] = useState<Booba | null>(null);
@@ -105,6 +115,16 @@ const Index = () => {
   const [totalOpened, setTotalOpened] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [bubix, setBubix] = useState(200);
+  const [playerId] = useState(() => {
+    let id = localStorage.getItem('booba-player-id');
+    if (!id) {
+      id = 'player_' + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('booba-player-id', id);
+    }
+    return id;
+  });
+  const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [sellPrice, setSellPrice] = useState<Record<string, number>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -121,7 +141,158 @@ const Index = () => {
     if (savedBubix) {
       setBubix(parseInt(savedBubix));
     }
+    
+    loadListings();
+    syncWithServer();
   }, []);
+
+  const syncWithServer = async () => {
+    try {
+      const inventoryData: Record<string, number> = {};
+      Object.values(collection).forEach(item => {
+        inventoryData[item.id] = item.count;
+      });
+      
+      await fetch(MARKETPLACE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          player_id: playerId,
+          bubix,
+          inventory: inventoryData
+        })
+      });
+    } catch (error) {
+      console.error('Sync failed:', error);
+    }
+  };
+
+  const loadListings = async () => {
+    try {
+      const response = await fetch(`${MARKETPLACE_API}?action=listings`);
+      const data = await response.json();
+      setListings(data.listings || []);
+    } catch (error) {
+      console.error('Failed to load listings:', error);
+    }
+  };
+
+  const sellBooba = async (boobaId: string) => {
+    const price = sellPrice[boobaId];
+    if (!price || price < 1) {
+      toast({
+        title: '❌ Укажите цену',
+        description: 'Цена должна быть больше 0',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    try {
+      const response = await fetch(MARKETPLACE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sell',
+          player_id: playerId,
+          booba_id: boobaId,
+          price
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        const newCollection = { ...collection };
+        if (newCollection[boobaId]) {
+          newCollection[boobaId].count -= 1;
+          if (newCollection[boobaId].count === 0) {
+            delete newCollection[boobaId];
+          }
+        }
+        setCollection(newCollection);
+        saveProgress(newCollection, totalOpened, bubix);
+        
+        toast({
+          title: '✅ Выставлено на продажу',
+          description: `${boobas.find(b => b.id === boobaId)?.name} за ${price} бубиксов`
+        });
+        
+        loadListings();
+        setSellPrice({ ...sellPrice, [boobaId]: 0 });
+      } else {
+        toast({
+          title: '❌ Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: '❌ Ошибка сети',
+        description: 'Не удалось выставить на продажу',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const buyBooba = async (listingId: number) => {
+    try {
+      const response = await fetch(MARKETPLACE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'buy',
+          player_id: playerId,
+          listing_id: listingId
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        const listing = listings.find(l => l.listing_id === listingId);
+        if (listing) {
+          const newBubix = bubix - listing.price;
+          const boobaData = boobas.find(b => b.id === data.booba_id);
+          
+          if (boobaData) {
+            const newCollection = { ...collection };
+            if (newCollection[data.booba_id]) {
+              newCollection[data.booba_id].count += 1;
+            } else {
+              newCollection[data.booba_id] = {
+                ...boobaData,
+                count: 1,
+                firstUnlocked: new Date().toISOString()
+              };
+            }
+            setCollection(newCollection);
+            setBubix(newBubix);
+            saveProgress(newCollection, totalOpened, newBubix);
+          }
+          
+          toast({
+            title: '✅ Куплено!',
+            description: `Вы купили ${boobas.find(b => b.id === data.booba_id)?.name}`
+          });
+          
+          loadListings();
+        }
+      } else {
+        toast({
+          title: '❌ Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: '❌ Ошибка сети',
+        description: 'Не удалось купить',
+        variant: 'destructive'
+      });
+    }
+  };
 
   const saveProgress = (newCollection: Record<string, CollectionItem>, newTotal: number, newBubix: number) => {
     localStorage.setItem('booba-collection', JSON.stringify(newCollection));
@@ -199,8 +370,8 @@ const Index = () => {
   };
 
   const collectionArray = Object.values(collection).sort((a, b) => {
-    const rarityOrder = { legendary: 0, rare: 1, common: 2 };
-    return rarityOrder[a.rarity] - rarityOrder[b.rarity];
+    const rarityOrder = { legendary: 0, rare: 1, common: 2, invisible: 3 };
+    return rarityOrder[a.rarity as keyof typeof rarityOrder] - rarityOrder[b.rarity as keyof typeof rarityOrder];
   });
 
   const stats = {
@@ -237,14 +408,22 @@ const Index = () => {
         </div>
 
         <Tabs defaultValue="cases" className="w-full">
-          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+          <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-8">
             <TabsTrigger value="cases" className="flex items-center gap-2">
               <Icon name="Package" size={18} />
-              Открыть кейсы
+              Кейсы
             </TabsTrigger>
             <TabsTrigger value="collection" className="flex items-center gap-2">
               <Icon name="Trophy" size={18} />
-              Коллекция ({stats.unique}/{boobas.length})
+              Коллекция
+            </TabsTrigger>
+            <TabsTrigger value="marketplace" className="flex items-center gap-2">
+              <Icon name="Store" size={18} />
+              Магазин
+            </TabsTrigger>
+            <TabsTrigger value="inventory" className="flex items-center gap-2">
+              <Icon name="Package2" size={18} />
+              Инвентарь
             </TabsTrigger>
           </TabsList>
 
@@ -362,11 +541,19 @@ const Index = () => {
                         <Badge className={`mb-2 ${rarityConfig[item.rarity].color} bg-background/80`}>
                           {rarityConfig[item.rarity].label}
                         </Badge>
-                        <img 
-                          src={item.image} 
-                          alt={item.name}
-                          className="w-full h-48 object-contain mb-3 rounded-lg"
-                        />
+                        {item.rarity === 'invisible' ? (
+                          <div className="w-full h-48 flex flex-col items-center justify-center text-center mb-3">
+                            <p className="text-sm font-bold text-muted-foreground mb-1">Его нету</p>
+                            <p className="text-xs text-muted-foreground/80">он типа невидимый</p>
+                            <Icon name="Ghost" size={40} className="text-muted-foreground/40 mt-2" />
+                          </div>
+                        ) : (
+                          <img 
+                            src={item.image} 
+                            alt={item.name}
+                            className="w-full h-48 object-contain mb-3 rounded-lg"
+                          />
+                        )}
                         <h3 className="text-xl font-bold mb-2">{item.name}</h3>
                         <div className="flex items-center justify-between text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
@@ -377,6 +564,171 @@ const Index = () => {
                             <Icon name="Clock" size={14} />
                             {new Date(item.firstUnlocked).toLocaleDateString('ru')}
                           </span>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="marketplace">
+            <Card className="p-6 bg-card/50 backdrop-blur">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                <Icon name="Store" size={28} />
+                Магазин Буб
+              </h2>
+              
+              <Button 
+                onClick={loadListings}
+                variant="outline"
+                className="mb-6"
+              >
+                <Icon name="RefreshCw" size={16} className="mr-2" />
+                Обновить
+              </Button>
+
+              {listings.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Icon name="ShoppingCart" size={64} className="mx-auto mb-4 opacity-50" />
+                  <p className="text-lg">Магазин пуст</p>
+                  <p className="text-sm">Пока никто не выставил Буб на продажу</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-[600px] pr-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {listings.map((listing) => {
+                      const boobaData = boobas.find(b => b.id === listing.booba_id);
+                      if (!boobaData) return null;
+                      
+                      const isMyListing = listing.seller_id === playerId;
+                      
+                      return (
+                        <Card 
+                          key={listing.listing_id}
+                          className={`p-4 border-2 ${rarityConfig[boobaData.rarity].borderColor} ${rarityConfig[boobaData.rarity].bgColor}`}
+                        >
+                          <Badge className={`mb-2 ${rarityConfig[boobaData.rarity].color} bg-background/80`}>
+                            {rarityConfig[boobaData.rarity].label}
+                          </Badge>
+                          {boobaData.rarity === 'invisible' ? (
+                            <div className="w-full h-48 flex flex-col items-center justify-center text-center mb-3">
+                              <p className="text-sm font-bold text-muted-foreground mb-1">Его нету</p>
+                              <p className="text-xs text-muted-foreground/80">он типа невидимый</p>
+                              <Icon name="Ghost" size={40} className="text-muted-foreground/40 mt-2" />
+                            </div>
+                          ) : (
+                            <img 
+                              src={boobaData.image} 
+                              alt={boobaData.name}
+                              className="w-full h-48 object-contain mb-3 rounded-lg"
+                            />
+                          )}
+                          <h3 className="text-xl font-bold mb-2">{boobaData.name}</h3>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Icon name="Coins" size={18} className="text-yellow-500" />
+                              <span className="text-xl font-bold text-yellow-500">{listing.price}</span>
+                            </div>
+                            {isMyListing && (
+                              <Badge variant="secondary">Ваш лот</Badge>
+                            )}
+                          </div>
+                          <Button 
+                            onClick={() => buyBooba(listing.listing_id)}
+                            disabled={isMyListing || bubix < listing.price}
+                            className="w-full"
+                            variant={isMyListing ? "outline" : "default"}
+                          >
+                            {isMyListing ? (
+                              <>
+                                <Icon name="User" size={16} className="mr-2" />
+                                Ваш лот
+                              </>
+                            ) : bubix < listing.price ? (
+                              <>
+                                <Icon name="Ban" size={16} className="mr-2" />
+                                Не хватает бубиксов
+                              </>
+                            ) : (
+                              <>
+                                <Icon name="ShoppingCart" size={16} className="mr-2" />
+                                Купить
+                              </>
+                            )}
+                          </Button>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="inventory">
+            <Card className="p-6 bg-card/50 backdrop-blur">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                <Icon name="Package2" size={28} />
+                Инвентарь - Продажа Буб
+              </h2>
+
+              {collectionArray.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Icon name="PackageOpen" size={64} className="mx-auto mb-4 opacity-50" />
+                  <p className="text-lg">Инвентарь пуст</p>
+                  <p className="text-sm">Откройте кейсы, чтобы получить Буб для продажи!</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-[600px] pr-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {collectionArray.map((item) => (
+                      <Card 
+                        key={item.id}
+                        className={`p-4 border-2 ${rarityConfig[item.rarity].borderColor} ${rarityConfig[item.rarity].bgColor}`}
+                      >
+                        <Badge className={`mb-2 ${rarityConfig[item.rarity].color} bg-background/80`}>
+                          {rarityConfig[item.rarity].label}
+                        </Badge>
+                        {item.rarity === 'invisible' ? (
+                          <div className="w-full h-48 flex flex-col items-center justify-center text-center mb-3">
+                            <p className="text-sm font-bold text-muted-foreground mb-1">Его нету</p>
+                            <p className="text-xs text-muted-foreground/80">он типа невидимый</p>
+                            <Icon name="Ghost" size={40} className="text-muted-foreground/40 mt-2" />
+                          </div>
+                        ) : (
+                          <img 
+                            src={item.image} 
+                            alt={item.name}
+                            className="w-full h-48 object-contain mb-3 rounded-lg"
+                          />
+                        )}
+                        <h3 className="text-xl font-bold mb-2">{item.name}</h3>
+                        <div className="flex items-center gap-1 mb-3 text-sm text-muted-foreground">
+                          <Icon name="Hash" size={14} />
+                          В наличии: {item.count} шт
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="Цена"
+                              value={sellPrice[item.id] || ''}
+                              onChange={(e) => setSellPrice({ ...sellPrice, [item.id]: parseInt(e.target.value) || 0 })}
+                              className="flex-1 px-3 py-2 bg-background border rounded-md text-sm"
+                            />
+                            <Button 
+                              onClick={() => sellBooba(item.id)}
+                              disabled={item.count < 1}
+                              size="sm"
+                            >
+                              <Icon name="Tag" size={14} className="mr-1" />
+                              Продать
+                            </Button>
+                          </div>
                         </div>
                       </Card>
                     ))}

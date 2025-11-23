@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "Get marketplace listings",
+      "method": "GET",
+      "path": "/?action=listings",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Sync player inventory",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "sync",
+        "player_id": "test_player_123",
+        "bubix": 300,
+        "inventory": {
+          "regular-booba": 2,
+          "cool-booba": 1
+        }
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
