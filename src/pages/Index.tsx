@@ -10,9 +10,10 @@ import { useToast } from '@/hooks/use-toast';
 interface Booba {
   id: string;
   name: string;
-  rarity: 'legendary' | 'rare' | 'common';
-  image: string;
+  rarity: 'legendary' | 'rare' | 'common' | 'invisible';
+  image?: string;
   chance: number;
+  reward: number;
 }
 
 interface CollectionItem extends Booba {
@@ -26,35 +27,47 @@ const boobas: Booba[] = [
     name: 'Крутой Буба',
     rarity: 'legendary',
     image: 'https://cdn.poehali.dev/files/bbc52363-7edd-421d-b704-16291f10f9b4.jpg',
-    chance: 5
+    chance: 5,
+    reward: 500
   },
   {
     id: 'laughing-booba',
     name: 'Смеющийся Буба',
     rarity: 'rare',
     image: 'https://cdn.poehali.dev/files/328f4730-f1e2-45c6-bc03-ca94d18b5ffd.jpg',
-    chance: 15
+    chance: 13,
+    reward: 150
   },
   {
     id: 'sad-booba',
     name: 'Грустный Буба',
     rarity: 'rare',
     image: 'https://cdn.poehali.dev/files/5f53971d-d15f-4de0-9a09-f5a52d8991c5.jpg',
-    chance: 10
+    chance: 10,
+    reward: 150
+  },
+  {
+    id: 'invisible-booba',
+    name: 'Невидимый Буба',
+    rarity: 'invisible',
+    chance: 7,
+    reward: -30
   },
   {
     id: 'regular-booba',
     name: 'Обычный Буба',
     rarity: 'common',
     image: 'https://cdn.poehali.dev/files/506d5ba0-644a-4c64-a200-0715bb43c72b.jpg',
-    chance: 50
+    chance: 45,
+    reward: 90
   },
   {
     id: 'sleepy-booba',
     name: 'Спящий Буба',
     rarity: 'common',
     image: 'https://cdn.poehali.dev/files/559f0072-6940-41a7-b372-f0dd81de24e5.jpg',
-    chance: 25
+    chance: 20,
+    reward: 90
   }
 ];
 
@@ -76,6 +89,12 @@ const rarityConfig = {
     bgColor: 'bg-common/20',
     borderColor: 'border-common',
     label: 'ОБЫЧНЫЙ'
+  },
+  invisible: {
+    color: 'text-destructive',
+    bgColor: 'bg-destructive/10',
+    borderColor: 'border-destructive',
+    label: 'НЕВИДИМЫЙ'
   }
 };
 
@@ -85,11 +104,13 @@ const Index = () => {
   const [collection, setCollection] = useState<Record<string, CollectionItem>>({});
   const [totalOpened, setTotalOpened] = useState(0);
   const [showResult, setShowResult] = useState(false);
+  const [bubix, setBubix] = useState(200);
   const { toast } = useToast();
 
   useEffect(() => {
     const savedCollection = localStorage.getItem('booba-collection');
     const savedTotal = localStorage.getItem('booba-total-opened');
+    const savedBubix = localStorage.getItem('booba-bubix');
     
     if (savedCollection) {
       setCollection(JSON.parse(savedCollection));
@@ -97,11 +118,15 @@ const Index = () => {
     if (savedTotal) {
       setTotalOpened(parseInt(savedTotal));
     }
+    if (savedBubix) {
+      setBubix(parseInt(savedBubix));
+    }
   }, []);
 
-  const saveProgress = (newCollection: Record<string, CollectionItem>, newTotal: number) => {
+  const saveProgress = (newCollection: Record<string, CollectionItem>, newTotal: number, newBubix: number) => {
     localStorage.setItem('booba-collection', JSON.stringify(newCollection));
     localStorage.setItem('booba-total-opened', newTotal.toString());
+    localStorage.setItem('booba-bubix', newBubix.toString());
   };
 
   const getRandomBooba = (): Booba => {
@@ -121,9 +146,21 @@ const Index = () => {
   const openCase = () => {
     if (isOpening) return;
     
+    if (bubix < 50) {
+      toast({
+        title: '❌ Недостаточно бубиксов!',
+        description: 'Нужно 50 бубиксов для открытия кейса',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
     setIsOpening(true);
     setShowResult(false);
     setCurrentBooba(null);
+    
+    const newBubix = bubix - 50;
+    setBubix(newBubix);
     
     setTimeout(() => {
       const wonBooba = getRandomBooba();
@@ -131,6 +168,7 @@ const Index = () => {
       
       const newCollection = { ...collection };
       const newTotal = totalOpened + 1;
+      const finalBubix = newBubix + wonBooba.reward;
       
       if (newCollection[wonBooba.id]) {
         newCollection[wonBooba.id].count += 1;
@@ -144,15 +182,17 @@ const Index = () => {
       
       setCollection(newCollection);
       setTotalOpened(newTotal);
-      saveProgress(newCollection, newTotal);
+      setBubix(finalBubix);
+      saveProgress(newCollection, newTotal, finalBubix);
       
       setTimeout(() => {
         setShowResult(true);
         setIsOpening(false);
         
+        const rewardText = wonBooba.reward >= 0 ? `+${wonBooba.reward} бубиксов` : `${wonBooba.reward} бубиксов`;
         toast({
-          title: wonBooba.rarity === 'legendary' ? '🎉 ЛЕГЕНДАРНЫЙ!' : wonBooba.rarity === 'rare' ? '✨ РЕДКИЙ!' : '✅ Получен!',
-          description: `Вы получили ${wonBooba.name}!`
+          title: wonBooba.rarity === 'legendary' ? '🎉 ЛЕГЕНДАРНЫЙ!' : wonBooba.rarity === 'rare' ? '✨ РЕДКИЙ!' : wonBooba.rarity === 'invisible' ? '👻 НЕВИДИМЫЙ!' : '✅ Получен!',
+          description: `${wonBooba.name}! ${rewardText}`
         });
       }, 800);
     }, 500);
@@ -179,6 +219,11 @@ const Index = () => {
             Буба Кейсы
           </h1>
           <p className="text-muted-foreground text-lg">Собери коллекцию редких персонажей!</p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Icon name="Coins" size={28} className="text-yellow-500" />
+            <span className="text-3xl font-bold text-yellow-500">{bubix}</span>
+            <span className="text-lg text-muted-foreground">бубиксов</span>
+          </div>
           <div className="mt-4 text-sm text-muted-foreground/80">
             <p>Сделано <span className="text-destructive font-semibold">RED BUBA</span></p>
             <p className="flex items-center justify-center gap-2 mt-1">
@@ -208,13 +253,16 @@ const Index = () => {
               <Card className="max-w-md mx-auto p-8 bg-card/50 backdrop-blur border-2">
                 <div className="relative">
                   {!showResult ? (
-                    <div 
-                      className={`w-64 h-64 mx-auto bg-gradient-to-br from-primary/30 to-legendary/30 rounded-2xl flex items-center justify-center cursor-pointer transition-all hover:scale-105 ${
-                        isOpening ? 'animate-case-shake' : ''
-                      }`}
-                      onClick={openCase}
-                    >
-                      <Icon name="Package" size={100} className="text-primary" />
+                    <div>
+                      <div 
+                        className={`w-64 h-64 mx-auto bg-gradient-to-br from-primary/30 to-legendary/30 rounded-2xl flex items-center justify-center cursor-pointer transition-all hover:scale-105 ${
+                          isOpening ? 'animate-case-shake' : ''
+                        }`}
+                        onClick={openCase}
+                      >
+                        <Icon name="Package" size={100} className="text-primary" />
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-4">Стоимость: 50 бубиксов</p>
                     </div>
                   ) : currentBooba && (
                     <div className="animate-booba-appear">
@@ -222,13 +270,24 @@ const Index = () => {
                         <Badge className={`absolute -top-3 left-1/2 -translate-x-1/2 ${rarityConfig[currentBooba.rarity].color} bg-background border-2 ${rarityConfig[currentBooba.rarity].borderColor}`}>
                           {rarityConfig[currentBooba.rarity].label}
                         </Badge>
-                        <img 
-                          src={currentBooba.image} 
-                          alt={currentBooba.name}
-                          className="w-64 h-64 object-contain mx-auto animate-glow-pulse"
-                          style={{ color: `hsl(var(--${currentBooba.rarity}))` }}
-                        />
+                        {currentBooba.rarity === 'invisible' ? (
+                          <div className="w-64 h-64 mx-auto flex flex-col items-center justify-center text-center p-8">
+                            <p className="text-xl font-bold text-muted-foreground mb-2">Его нету</p>
+                            <p className="text-lg text-muted-foreground/80">он типа невидимый</p>
+                            <Icon name="Ghost" size={60} className="text-muted-foreground/40 mt-4" />
+                          </div>
+                        ) : (
+                          <img 
+                            src={currentBooba.image} 
+                            alt={currentBooba.name}
+                            className="w-64 h-64 object-contain mx-auto animate-glow-pulse"
+                            style={{ color: `hsl(var(--${currentBooba.rarity}))` }}
+                          />
+                        )}
                         <h3 className="text-2xl font-bold mt-4">{currentBooba.name}</h3>
+                        <p className={`text-lg font-semibold mt-2 ${currentBooba.reward >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {currentBooba.reward >= 0 ? '+' : ''}{currentBooba.reward} бубиксов
+                        </p>
                       </div>
                     </div>
                   )}
